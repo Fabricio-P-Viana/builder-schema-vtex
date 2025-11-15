@@ -1,6 +1,27 @@
 {
   "name": "builder-schema-vtex",
   "version": "0.1.0",
+  "description": "Uma ferramenta visual poderosa para criar e gerenciar schemas JSON do VTEX IO",
+  "author": "Fabricio P. Viana <fabricio@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fabricio-P-Viana/builder-schema-vtex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Fabricio-P-Viana/builder-schema-vtex/issues"
+  },
+  "homepage": "https://github.com/Fabricio-P-Viana/builder-schema-vtex#readme",
+  "keywords": [
+    "vtex",
+    "vtex-io",
+    "schema",
+    "json-schema",
+    "schema-builder",
+    "nextjs",
+    "react",
+    "typescript"
+  ],
   "private": true,
   "scripts": {
     "dev": "next dev",

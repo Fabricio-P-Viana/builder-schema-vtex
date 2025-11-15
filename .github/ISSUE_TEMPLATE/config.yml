@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/Fabricio-P-Viana/builder-schema-vtex/discussions
+    about: Faça perguntas, compartilhe ideias ou discuta sobre o projeto
+  - name: 📖 Documentation
+    url: https://github.com/Fabricio-P-Viana/builder-schema-vtex#readme
+    about: Leia a documentação completa do projeto
+  - name: 🤝 Contributing Guide
+    url: https://github.com/Fabricio-P-Viana/builder-schema-vtex/blob/master/CONTRIBUTING.md
+    about: Aprenda como contribuir com o projeto

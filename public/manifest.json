@@ -1,0 +1,13 @@
+{
+  "name": "VTEX Schema Builder",
+  "short_name": "Schema Builder",
+  "description": "Ferramenta visual para criar schemas JSON do VTEX IO",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "developer tools"],
+  "lang": "pt-BR",
+  "dir": "ltr"
+}

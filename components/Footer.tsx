@@ -18,11 +18,11 @@ const Footer = () => {
               <span className="sm:hidden">Docs</span>
             </Link>
             <Link 
-              href="https://github.com/Fabricio-P-Viana" 
+              href="https://github.com/Fabricio-P-Viana/builder-schema-vtex" 
               target="_blank"
               className="text-muted-foreground hover:text-primary transition-colors"
             >
-              GitHub
+              GitHub Repository
             </Link>
           </div>
         </div>
