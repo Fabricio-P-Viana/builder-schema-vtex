@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Plus, Trash2, ChevronRight, ChevronDown, FileJson, Folder, FolderOpen } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { useState } from 'react';
+import { useExpandable, usePropertyNavigator } from '@/hooks';
+import ChildPropertyItem from './shared/ChildPropertyItem';
 
 interface PropertyListProps {
   properties: PropertyForm[];
@@ -22,28 +23,8 @@ export default function PropertyList({
   onAddProperty,
   onRemoveProperty,
 }: PropertyListProps) {
-  const [expandedProperties, setExpandedProperties] = useState<Set<string>>(new Set());
-
-  const toggleExpand = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newExpanded = new Set(expandedProperties);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
-    setExpandedProperties(newExpanded);
-  };
-
-  const hasChildren = (property: PropertyForm) => {
-    return (
-      (property.type === 'array' && property.arrayItemProperties && property.arrayItemProperties.length > 0) ||
-      (property.type === 'object' && property.objectProperties && property.objectProperties.length > 0) ||
-      (property.type === 'conditional' && property.conditionalFields && property.conditionalFields.length > 0)
-    );
-  };
-
-  const isExpanded = (id: string) => expandedProperties.has(id);
+  const { toggle, isExpanded } = useExpandable<string>();
+  const { hasChildren, getChildren } = usePropertyNavigator();
 
   return (
     <div className="h-full flex flex-col bg-[hsl(var(--sidebar-bg))] border-r border-[hsl(var(--sidebar-border))]">
@@ -73,7 +54,8 @@ export default function PropertyList({
           <div className="py-1">
             {properties.map((property) => {
               const expanded = isExpanded(property.id);
-              const children = hasChildren(property);
+              const hasPropertyChildren = hasChildren(property);
+              const children = getChildren(property);
               
               return (
                 <div key={property.id}>
@@ -86,9 +68,9 @@ export default function PropertyList({
                     onClick={() => onSelectProperty(property.id)}
                   >
                     {/* Expand/Collapse Icon */}
-                    {children ? (
+                    {hasPropertyChildren ? (
                       <button
-                        onClick={(e) => toggleExpand(property.id, e)}
+                        onClick={(e) => toggle(property.id, e)}
                         className="shrink-0 w-4 h-4 flex items-center justify-center hover:bg-[hsl(var(--sidebar-hover))] rounded"
                       >
                         {expanded ? (
@@ -102,7 +84,7 @@ export default function PropertyList({
                     )}
 
                     {/* File/Folder Icon */}
-                    {children ? (
+                    {hasPropertyChildren ? (
                       expanded ? (
                         <FolderOpen className="w-4 h-4 text-primary shrink-0" />
                       ) : (
@@ -140,76 +122,19 @@ export default function PropertyList({
                     </button>
                   </div>
 
-                  {/* Children (Array Items ou Conditional Fields) */}
-                  {expanded && children && (
+                  {/* Children */}
+                  {expanded && hasPropertyChildren && (
                     <div className="ml-4 border-l border-border">
-                      {/* Array Items */}
-                      {property.type === 'array' && property.arrayItemProperties?.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-1 px-2 py-1 hover:bg-[hsl(var(--sidebar-hover))]"
-                        >
-                          <div className="w-4" />
-                          <FileJson className="w-3.5 h-3.5 text-purple-500 dark:text-purple-400 shrink-0" />
-                          <span className={cn(
-                            "text-xs flex-1 truncate",
-                            item.name ? "text-foreground" : "text-muted-foreground italic"
-                          )}>
-                            {item.name || 'sem-nome'}
-                          </span>
-                          <Badge 
-                            variant={item.type as never}
-                            className="scale-[0.65] shrink-0"
-                          >
-                            {item.type}
-                          </Badge>
-                        </div>
-                      ))}
-
-                      {/* Object Properties */}
-                      {property.type === 'object' && property.objectProperties?.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-1 px-2 py-1 hover:bg-[hsl(var(--sidebar-hover))]"
-                        >
-                          <div className="w-4" />
-                          <FileJson className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0" />
-                          <span className={cn(
-                            "text-xs flex-1 truncate",
-                            item.name ? "text-foreground" : "text-muted-foreground italic"
-                          )}>
-                            {item.name || 'sem-nome'}
-                          </span>
-                          <Badge 
-                            variant={item.type as never}
-                            className="scale-[0.65] shrink-0"
-                          >
-                            {item.type}
-                          </Badge>
-                        </div>
-                      ))}
-
-                      {/* Conditional Fields */}
-                      {property.type === 'conditional' && property.conditionalFields?.map((field) => (
-                        <div
-                          key={field.id}
-                          className="flex items-center gap-1 px-2 py-1 hover:bg-[hsl(var(--sidebar-hover))]"
-                        >
-                          <div className="w-4" />
-                          <FileJson className="w-3.5 h-3.5 text-yellow-500 dark:text-yellow-400 shrink-0" />
-                          <span className={cn(
-                            "text-xs flex-1 truncate",
-                            field.name ? "text-foreground" : "text-muted-foreground italic"
-                          )}>
-                            {field.name || 'sem-nome'}
-                          </span>
-                          <Badge 
-                            variant={field.type as never}
-                            className="scale-[0.65] shrink-0"
-                          >
-                            {field.type}
-                          </Badge>
-                        </div>
+                      {children.map((item) => (
+                        <ChildPropertyItem 
+                          key={item.id} 
+                          item={item}
+                          color={
+                            property.type === 'array' ? 'purple' :
+                            property.type === 'object' ? 'blue' :
+                            'yellow'
+                          }
+                        />
                       ))}
                     </div>
                   )}

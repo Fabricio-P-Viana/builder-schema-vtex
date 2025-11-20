@@ -22,7 +22,6 @@ function CreateSchemaContent() {
     selectedPath,
     componentTitle,
     setComponentTitle,
-    getPropertyByPath,
   } = usePropertyContext();
 
   // Usar react-hook-form com Zod para validação
@@ -50,8 +49,6 @@ function CreateSchemaContent() {
     setShowCopiedMessage(true);
     setTimeout(() => setShowCopiedMessage(false), 2000);
   };
-
-  const selectedProperty = selectedPath ? getPropertyByPath(selectedPath) : null;
 
   return (
     <div className="min-h-[calc(100vh-80px)] lg:h-[calc(100vh-80px)] flex flex-col">
@@ -89,7 +86,7 @@ function CreateSchemaContent() {
 
         {/* Editor Section - Centro */}
         <div className="flex-1 overflow-y-auto bg-[hsl(var(--editor-bg))]">
-          {selectedProperty ? (
+          {selectedPath ? (
             <PropertyEditor />
           ) : (
             <div className="h-full flex items-center justify-center">

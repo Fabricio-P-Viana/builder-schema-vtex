@@ -8,6 +8,14 @@ import {
   EnumArrayItemProperty,
   StringArrayItemProperty
 } from '@/types';
+import {
+  StringPropertyProcessor,
+  EnumPropertyProcessor,
+  ArrayPropertyProcessor,
+  ObjectPropertyProcessor,
+  ConditionalPropertyProcessor,
+  setDefaultValue
+} from './schemaGenerators';
 
 /**
  * Type guard para propriedades do tipo array
@@ -39,9 +47,22 @@ function isStringProperty(prop: ArrayItemProperty): prop is StringArrayItemPrope
 
 /**
  * Processa recursivamente propriedades de array/object aninhados
+ * Retorna tanto as properties quanto as dependencies
  */
-function processArrayItemProperties(items: ArrayItemProperty[]): { [key: string]: VtexProperty } {
+function processArrayItemProperties(
+  items: ArrayItemProperty[]
+): {
+  properties: { [key: string]: VtexProperty };
+  dependencies?: Record<string, { oneOf: Array<{ properties: Record<string, Partial<VtexProperty>> }> }>;
+} {
   const properties: { [key: string]: VtexProperty } = {};
+  const dependencies: Record<string, { oneOf: Array<{ properties: Record<string, Partial<VtexProperty>> }> }> = {};
+
+  const stringProcessor = new StringPropertyProcessor();
+  const enumProcessor = new EnumPropertyProcessor();
+  const arrayProcessor = new ArrayPropertyProcessor(processArrayItemProperties);
+  const objectProcessor = new ObjectPropertyProcessor(processArrayItemProperties);
+  const conditionalProcessor = new ConditionalPropertyProcessor();
 
   items.forEach((itemProp) => {
     if (!itemProp.name) return;
@@ -53,51 +74,49 @@ function processArrayItemProperties(items: ArrayItemProperty[]): { [key: string]
 
     if (itemProp.description) itemProperty.description = itemProp.description;
 
-    if (itemProp.defaultValue) {
-      if (itemProp.type === 'boolean') {
-        itemProperty.default = itemProp.defaultValue === 'true';
-      } else if (itemProp.type === 'number') {
-        itemProperty.default = Number(itemProp.defaultValue);
-      } else {
-        itemProperty.default = itemProp.defaultValue;
-      }
-    }
+    setDefaultValue(itemProperty, itemProp.type, itemProp.defaultValue);
 
+    // Processar campos específicos por tipo usando processadores
     if (isStringProperty(itemProp)) {
-      if (itemProp.widget) {
-        itemProperty.widget = { 'ui:widget': itemProp.widget };
-      }
-      if (itemProp.format) {
-        itemProperty.format = itemProp.format;
-      }
+      Object.assign(itemProperty, stringProcessor.process(itemProp));
     }
 
-    if (isEnumProperty(itemProp) && itemProp.enumValues) {
-      itemProperty.enum = itemProp.enumValues.split(',').map((v: string) => v.trim());
-      if (itemProp.enumNames) {
-        itemProperty.enumNames = itemProp.enumNames.split(',').map((v: string) => v.trim());
+    if (isEnumProperty(itemProp)) {
+      Object.assign(itemProperty, enumProcessor.process(itemProp));
+    }
+
+    // Processar conditional
+    if (itemProp.type === 'conditional') {
+      const result = conditionalProcessor.process({
+        type: 'conditional',
+        name: itemProp.name,
+        conditionalFields: 'conditionalFields' in itemProp && Array.isArray(itemProp.conditionalFields)
+          ? itemProp.conditionalFields
+          : undefined
+      });
+      Object.assign(itemProperty, result.property);
+      if (result.dependencies) {
+        Object.assign(dependencies, result.dependencies);
       }
     }
 
     // Processar array aninhado
-    if (isArrayProperty(itemProp) && itemProp.arrayItemProperties && itemProp.arrayItemProperties.length > 0) {
-      const nestedProperties = processArrayItemProperties(itemProp.arrayItemProperties);
-      itemProperty.items = {
-        type: 'object',
-        properties: nestedProperties,
-      };
+    if (isArrayProperty(itemProp)) {
+      Object.assign(itemProperty, arrayProcessor.process(itemProp));
     }
 
     // Processar objeto aninhado
-    if (isObjectProperty(itemProp) && itemProp.objectProperties && itemProp.objectProperties.length > 0) {
-      const nestedProperties = processArrayItemProperties(itemProp.objectProperties);
-      itemProperty.properties = nestedProperties;
+    if (isObjectProperty(itemProp)) {
+      Object.assign(itemProperty, objectProcessor.process(itemProp));
     }
 
     properties[itemProp.name] = itemProperty;
   });
 
-  return properties;
+  return {
+    properties,
+    dependencies: Object.keys(dependencies).length > 0 ? dependencies : undefined,
+  };
 }
 
 /**
@@ -113,6 +132,12 @@ export function generateVtexSchema(
   const schemaProperties: Record<string, VtexProperty> = {};
   const pendingDependencies: NonNullable<VtexSchemaDefinition['dependencies']> = {};
 
+  const stringProcessor = new StringPropertyProcessor();
+  const enumProcessor = new EnumPropertyProcessor();
+  const arrayProcessor = new ArrayPropertyProcessor(processArrayItemProperties);
+  const objectProcessor = new ObjectPropertyProcessor(processArrayItemProperties);
+  const conditionalProcessor = new ConditionalPropertyProcessor();
+
   properties.forEach((prop) => {
     if (!prop.name) return;
 
@@ -123,144 +148,35 @@ export function generateVtexSchema(
 
     if (prop.description) property.description = prop.description;
 
-    // Valor padrão - tratamento especial para cada tipo
-    if (prop.defaultValue) {
-      if (prop.type === 'boolean') {
-        property.default = prop.defaultValue === 'true';
-      } else if (prop.type === 'number') {
-        property.default = Number(prop.defaultValue);
-      } else {
-        property.default = prop.defaultValue;
-      }
-    }
+    setDefaultValue(property, prop.type, prop.defaultValue);
 
-    // Widget e formato (apenas para string)
+    // Processar campos específicos por tipo usando processadores
     if (prop.type === 'string') {
-      if (prop.widget) {
-        property.widget = { 'ui:widget': prop.widget };
-      }
-
-      if (prop.format) {
-        property.format = prop.format;
-      }
+      Object.assign(property, stringProcessor.process(prop as { type: 'string'; widget?: string; format?: string; defaultValue?: string }));
     }
 
-    if ((prop.type === 'string' || prop.type === 'enum') && prop.enumValues) {
-      property.enum = prop.enumValues.split(',').map((v) => v.trim());
-      if (prop.enumNames) {
-        property.enumNames = prop.enumNames.split(',').map((v) => v.trim());
-      }
+    if (prop.type === 'enum') {
+      Object.assign(property, enumProcessor.process(prop as { type: 'enum'; enumValues?: string; enumNames?: string }));
     }
 
-    // Configuração de Object
-    if (prop.type === 'object' && prop.objectProperties && prop.objectProperties.length > 0) {
-      // Processar propriedades do objeto (com suporte a aninhamento)
-      const processedProperties = processArrayItemProperties(prop.objectProperties);
-      property.properties = processedProperties;
+    if (prop.type === 'object') {
+      Object.assign(property, objectProcessor.process(prop as { type: 'object'; objectProperties?: ArrayItemProperty[] }));
     }
 
-    // Configuração de Array
-    if (prop.type === 'array' && prop.arrayItemProperties && prop.arrayItemProperties.length > 0) {
-      const itemProperties: { [key: string]: VtexProperty } = {};
-
-      // Adicionar __editorItemTitle se habilitado
-      if (prop.enableEditorItemTitle) {
-        itemProperties.__editorItemTitle = {
-          type: 'string',
-          title: prop.editorItemTitleLabel || 'Change item name',
-          default: prop.editorItemTitleDefault || 'Item',
-        };
-      }
-
-      // Processar propriedades do item do array (com suporte a aninhamento)
-      const processedProperties = processArrayItemProperties(prop.arrayItemProperties);
-      Object.assign(itemProperties, processedProperties);
-
-      property.items = {
-        type: 'object',
-        title: prop.arrayItemTitle || 'Item',
-        properties: itemProperties,
-      };
-
-      // Default value para array (se fornecido)
-      if (prop.arrayDefaultValue) {
-        try {
-          property.default = JSON.parse(prop.arrayDefaultValue);
-        } catch {
-          // Ignora se não for JSON válido
-        }
-      }
+    if (prop.type === 'array') {
+      Object.assign(property, arrayProcessor.process(prop as { type: 'array'; arrayItemTitle?: string; arrayItemProperties?: ArrayItemProperty[]; arrayDefaultValue?: string; enableEditorItemTitle?: string; editorItemTitleLabel?: string; editorItemTitleDefault?: string }));
     }
 
     // Configuração de Conditional
     if (prop.type === 'conditional') {
-      // Força os valores fixos para o campo conditional
-      property.type = 'string';
-      property.enum = ['none', 'provide'];
-      property.enumNames = ['Não', 'Sim'];
-      property.default = 'none';
-      property.widget = { 'ui:widget': 'radio' };
-
-      // Se houver campos condicionais, adiciona ao schema principal e cria dependencies
-      if (
-        prop.addConditionalFields &&
-        prop.conditionalFields &&
-        prop.conditionalFields.length > 0 &&
-        prop.name
-      ) {
-        const triggerValue = 'provide';
-        const conditionalProperties: Record<string, Partial<VtexProperty>> = {};
-
-        // Adiciona o próprio campo com enum restrito ao valor trigger
-        conditionalProperties[prop.name] = {
-          enum: [triggerValue],
-        };
-
-        // Adiciona os campos condicionais
-        prop.conditionalFields.forEach((condField) => {
-          if (!condField.name) return;
-
-          const condProperty: Partial<VtexProperty> = {
-            type: (condField.type === 'conditional' || condField.type === 'enum') ? 'string' : condField.type,
-          };
-
-          if (condField.defaultValue) {
-            if (condField.type === 'boolean') {
-              condProperty.default = condField.defaultValue === 'true';
-            } else if (condField.type === 'number') {
-              condProperty.default = Number(condField.defaultValue);
-            } else {
-              condProperty.default = condField.defaultValue;
-            }
-          }
-
-          if (condField.type === 'string') {
-            if (condField.widget) {
-              condProperty.widget = { 'ui:widget': condField.widget };
-            }
-
-            if (condField.format) {
-              condProperty.format = condField.format;
-            }
-          }
-
-          if (condField.type === 'enum' && condField.enumValues) {
-            condProperty.enum = condField.enumValues.split(',').map((v) => v.trim());
-            if (condField.enumNames) {
-              condProperty.enumNames = condField.enumNames.split(',').map((v) => v.trim());
-            }
-          }
-
-          conditionalProperties[condField.name] = condProperty;
-        });
-
-        pendingDependencies[prop.name] = {
-          oneOf: [
-            {
-              properties: conditionalProperties,
-            },
-          ],
-        };
+      const result = conditionalProcessor.process({
+        type: 'conditional',
+        name: prop.name,
+        conditionalFields: prop.conditionalFields
+      });
+      Object.assign(property, result.property);
+      if (result.dependencies) {
+        Object.assign(pendingDependencies, result.dependencies);
       }
     }
 

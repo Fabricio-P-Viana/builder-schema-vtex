@@ -21,6 +21,9 @@ export interface ConditionalField {
   defaultValue?: string;
   widget?: WidgetType;
   format?: string;
+  enumValues?: string;
+  enumNames?: string;
+  required?: boolean;
 }
 
 export interface Property {
@@ -107,6 +110,7 @@ export interface PropertyForm {
   name: string;
   type: PropertyType;
   title: string;
+  required?: boolean;
   description?: string;
   defaultValue?: string;
   widget?: WidgetType;

@@ -12,12 +12,14 @@ import {
   FolderOpen
 } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { usePropertyContext } from '@/contexts/PropertyContext';
 import { PropertyForm, ArrayItemProperty } from '@/types';
+import { PropertyNavigatorFactory, PropertyItem } from '@/contexts/PropertyNavigators';
+import { useExpandable } from '@/hooks';
 
 export default function PropertyTree() {
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const { toggle, isExpanded } = useExpandable<string>();
   
   const {
     properties,
@@ -27,45 +29,17 @@ export default function PropertyTree() {
     removeProperty,
   } = usePropertyContext();
 
-  const toggleExpand = (pathKey: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newExpanded = new Set(expandedPaths);
-    if (newExpanded.has(pathKey)) {
-      newExpanded.delete(pathKey);
-    } else {
-      newExpanded.add(pathKey);
-    }
-    setExpandedPaths(newExpanded);
-  };
+  const navigatorFactory = useMemo(() => new PropertyNavigatorFactory(), []);
 
   const getPathKey = (path: string[]) => path.join('.');
 
-  const isExpanded = (path: string[]) => expandedPaths.has(getPathKey(path));
-
-  const hasChildren = (item: PropertyForm | ArrayItemProperty): boolean => {
-    if (item.type === 'array' && 'arrayItemProperties' in item) {
-      return !!(item.arrayItemProperties && item.arrayItemProperties.length > 0);
-    }
-    if (item.type === 'object' && 'objectProperties' in item) {
-      return !!(item.objectProperties && item.objectProperties.length > 0);
-    }
-    if (item.type === 'conditional' && 'conditionalFields' in item) {
-      return !!(item.conditionalFields && item.conditionalFields.length > 0);
-    }
-    return false;
+  const hasChildren = (item: PropertyItem): boolean => {
+    const children = navigatorFactory.getChildren(item);
+    return !!(children && children.length > 0);
   };
 
-  const getChildren = (item: PropertyForm | ArrayItemProperty): ArrayItemProperty[] => {
-    if (item.type === 'array' && 'arrayItemProperties' in item) {
-      return item.arrayItemProperties || [];
-    }
-    if (item.type === 'object' && 'objectProperties' in item) {
-      return item.objectProperties || [];
-    }
-    if (item.type === 'conditional' && 'conditionalFields' in item) {
-      return item.conditionalFields || [];
-    }
-    return [];
+  const canAddChildren = (item: PropertyItem): boolean => {
+    return item.type === 'array' || item.type === 'object' || item.type === 'conditional';
   };
 
   const renderTreeItem = (
@@ -74,7 +48,7 @@ export default function PropertyTree() {
     depth: number
   ) => {
     const pathKey = getPathKey(path);
-    const expanded = isExpanded(path);
+    const expanded = isExpanded(pathKey);
     const children = hasChildren(item);
     const isSelected = selectedPath && getPathKey(selectedPath) === pathKey;
     const indentWidth = depth * 16;
@@ -95,7 +69,7 @@ export default function PropertyTree() {
           {/* Expand/Collapse Icon */}
           {children ? (
             <button
-              onClick={(e) => toggleExpand(pathKey, e)}
+              onClick={(e) => toggle(pathKey, e)}
               className="shrink-0 w-4 h-4 flex items-center justify-center hover:bg-[hsl(var(--sidebar-hover))] rounded"
             >
               {expanded ? (
@@ -137,7 +111,7 @@ export default function PropertyTree() {
           {/* Actions */}
           <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 shrink-0">
             {/* Add Child Button */}
-            {(item.type === 'array' || item.type === 'object') && (
+            {canAddChildren(item) && (
               <button
                 className="w-6 h-6 flex items-center justify-center bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50 rounded transition-all"
                 onClick={(e) => {
@@ -167,9 +141,9 @@ export default function PropertyTree() {
         {/* Children */}
         {expanded && children && (
           <div>
-            {getChildren(item).map((child, index) => {
+            {navigatorFactory.getChildren(item)?.map((child, index) => {
               const childPath = [...path, index.toString()];
-              return renderTreeItem(child, childPath, depth + 1);
+              return renderTreeItem(child as PropertyForm | ArrayItemProperty, childPath, depth + 1);
             })}
           </div>
         )}

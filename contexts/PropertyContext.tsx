@@ -1,7 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode, useMemo } from 'react';
 import { PropertyForm, ArrayItemProperty, ConditionalFieldForm } from '@/types';
+import { PropertyNavigatorFactory, PropertyItem } from './PropertyNavigators';
 
 interface PropertyContextType {
   properties: PropertyForm[];
@@ -25,28 +26,22 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
   const [selectedPath, setSelectedPath] = useState<string[] | null>(null);
   const [componentTitle, setComponentTitle] = useState('Custom Component');
 
+  const navigatorFactory = useMemo(() => new PropertyNavigatorFactory(), []);
+
   // Função para obter propriedade pelo caminho
   const getPropertyByPath = useCallback((path: string[]): PropertyForm | ArrayItemProperty | ConditionalFieldForm | null => {
     if (path.length === 0) return null;
     
-    let current: PropertyForm | ArrayItemProperty | ConditionalFieldForm = properties[parseInt(path[0])];
+    let current: PropertyItem = properties[parseInt(path[0])];
     
     for (let i = 1; i < path.length; i++) {
-      const index = parseInt(path[i]);
-      
-      if (current.type === 'array' && 'arrayItemProperties' in current && current.arrayItemProperties) {
-        current = current.arrayItemProperties[index];
-      } else if (current.type === 'object' && 'objectProperties' in current && current.objectProperties) {
-        current = current.objectProperties[index];
-      } else if (current.type === 'conditional' && 'conditionalFields' in current && current.conditionalFields) {
-        current = current.conditionalFields[index];
-      } else {
-        return null;
-      }
+      const children = navigatorFactory.getChildren(current);
+      if (!children) return null;
+      current = children[parseInt(path[i])];
     }
     
     return current;
-  }, [properties]);
+  }, [properties, navigatorFactory]);
 
   // Função para atualizar propriedade pelo caminho
   const updatePropertyByPath = useCallback((
@@ -57,158 +52,103 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     
     if (path.length === 1) {
       newProperties[parseInt(path[0])] = updatedProperty as PropertyForm;
-    } else {
-      const updateNested = (
-        items: (PropertyForm | ArrayItemProperty | ConditionalFieldForm)[],
-        pathIndex: number
-      ): (PropertyForm | ArrayItemProperty | ConditionalFieldForm)[] => {
-        return items.map((item, index) => {
-          if (index !== parseInt(path[pathIndex])) return item;
-          
-          if (pathIndex === path.length - 1) {
-            return updatedProperty;
-          }
-          
-          const newItem = { ...item };
-          
-          if (item.type === 'array' && 'arrayItemProperties' in item && item.arrayItemProperties) {
-            return {
-              ...newItem,
-              arrayItemProperties: updateNested(item.arrayItemProperties, pathIndex + 1) as ArrayItemProperty[]
-            };
-          } else if (item.type === 'object' && 'objectProperties' in item && item.objectProperties) {
-            return {
-              ...newItem,
-              objectProperties: updateNested(item.objectProperties, pathIndex + 1) as ArrayItemProperty[]
-            };
-          } else if (item.type === 'conditional' && 'conditionalFields' in item && item.conditionalFields) {
-            return {
-              ...newItem,
-              conditionalFields: updateNested(item.conditionalFields, pathIndex + 1) as ConditionalFieldForm[]
-            };
-          }
-          
-          return newItem;
-        });
-      };
-      
-      const updated = updateNested(newProperties, 0);
-      setProperties(updated as PropertyForm[]);
+      setProperties(newProperties);
       return;
     }
+
+    const updateNested = (
+      items: PropertyItem[],
+      pathIndex: number
+    ): PropertyItem[] => {
+      return items.map((item, index) => {
+        if (index !== parseInt(path[pathIndex])) return item;
+        
+        if (pathIndex === path.length - 1) {
+          return updatedProperty;
+        }
+        
+        const children = navigatorFactory.getChildren(item);
+        if (!children) return item;
+        
+        const updatedChildren = updateNested(children, pathIndex + 1);
+        return navigatorFactory.setChildren(item, updatedChildren);
+      });
+    };
     
-    setProperties(newProperties);
-  }, [properties]);
+    const updated = updateNested(newProperties, 0);
+    setProperties(updated as PropertyForm[]);
+  }, [properties, navigatorFactory]);
 
   // Função para adicionar propriedade
   const addProperty = useCallback((parentPath: string[] | null) => {
-    const newProperty: ArrayItemProperty = {
-      id: Date.now().toString(),
-      name: '',
-      type: 'string',
-      title: '',
-      description: '',
-      defaultValue: '',
-    };
-
-    if (parentPath === null) {
-      // Adicionar no nível raiz
-      const newRootProperty: PropertyForm = {
-        ...newProperty,
-        required: false,
-        addConditionalFields: false,
+    setProperties((currentProperties) => {
+      const newProperty: ArrayItemProperty = {
+        id: Date.now().toString(),
+        name: '',
+        type: 'string',
+        title: '',
+        description: '',
+        defaultValue: '',
       };
-      setProperties([...properties, newRootProperty]);
-      setSelectedPath([properties.length.toString()]);
-    } else {
+
+      if (parentPath === null) {
+        // Adicionar no nível raiz
+        const newRootProperty: PropertyForm = {
+          ...newProperty,
+          required: false,
+        };
+        setSelectedPath([currentProperties.length.toString()]);
+        return [...currentProperties, newRootProperty];
+      }
+
       // Adicionar como filho
-      const parentItem = getPropertyByPath(parentPath);
+      const getParentFromCurrent = (path: string[]): PropertyItem | null => {
+        if (path.length === 0) return null;
+        
+        let current: PropertyItem = currentProperties[parseInt(path[0])];
+        
+        for (let i = 1; i < path.length; i++) {
+          const children = navigatorFactory.getChildren(current);
+          if (!children) return null;
+          current = children[parseInt(path[i])];
+        }
+        
+        return current;
+      };
+
+      const parentItem = getParentFromCurrent(parentPath);
+      if (!parentItem) return currentProperties;
       
-      if (!parentItem) return;
-      
-      const newProperties = [...properties];
+      const newProperties = [...currentProperties];
       
       const addToParent = (
-        items: (PropertyForm | ArrayItemProperty | ConditionalFieldForm)[],
+        items: PropertyItem[],
         pathIndex: number
-      ): (PropertyForm | ArrayItemProperty | ConditionalFieldForm)[] => {
+      ): PropertyItem[] => {
         return items.map((item, index) => {
           if (index !== parseInt(parentPath[pathIndex])) return item;
           
           if (pathIndex === parentPath.length - 1) {
-            if (item.type === 'array') {
-              const arrayItem = item as typeof item & { arrayItemProperties?: ArrayItemProperty[] };
-              return {
-                ...arrayItem,
-                arrayItemProperties: [
-                  ...(arrayItem.arrayItemProperties || []),
-                  newProperty
-                ]
-              };
-            } else if (item.type === 'object') {
-              const objectItem = item as typeof item & { objectProperties?: ArrayItemProperty[] };
-              return {
-                ...objectItem,
-                objectProperties: [
-                  ...(objectItem.objectProperties || []),
-                  newProperty
-                ]
-              };
-            } else if (item.type === 'conditional' && 'conditionalFields' in item) {
-              const conditionalItem = item as PropertyForm;
-              return {
-                ...conditionalItem,
-                conditionalFields: [
-                  ...(conditionalItem.conditionalFields || []),
-                  newProperty as ConditionalFieldForm
-                ]
-              };
-            }
-            
-            return item;
+            return navigatorFactory.addChild(item, newProperty);
           }
           
-          const newItem = { ...item };
+          const children = navigatorFactory.getChildren(item);
+          if (!children) return item;
           
-          if (item.type === 'array' && 'arrayItemProperties' in item && item.arrayItemProperties) {
-            return {
-              ...newItem,
-              arrayItemProperties: addToParent(item.arrayItemProperties, pathIndex + 1) as ArrayItemProperty[]
-            };
-          } else if (item.type === 'object' && 'objectProperties' in item && item.objectProperties) {
-            return {
-              ...newItem,
-              objectProperties: addToParent(item.objectProperties, pathIndex + 1) as ArrayItemProperty[]
-            };
-          } else if (item.type === 'conditional' && 'conditionalFields' in item && item.conditionalFields) {
-            return {
-              ...newItem,
-              conditionalFields: addToParent(item.conditionalFields, pathIndex + 1) as ConditionalFieldForm[]
-            };
-          }
-          
-          return newItem;
+          const updatedChildren = addToParent(children, pathIndex + 1);
+          return navigatorFactory.setChildren(item, updatedChildren);
         });
       };
       
       const updated = addToParent(newProperties, 0);
-      setProperties(updated as PropertyForm[]);
       
-      // Selecionar o novo item - calcular o índice correto
-      const updatedParent = getPropertyByPath(parentPath);
-      if (updatedParent) {
-        let newIndex = 0;
-        if (updatedParent.type === 'array' && 'arrayItemProperties' in updatedParent && updatedParent.arrayItemProperties) {
-          newIndex = updatedParent.arrayItemProperties.length;
-        } else if (updatedParent.type === 'object' && 'objectProperties' in updatedParent && updatedParent.objectProperties) {
-          newIndex = updatedParent.objectProperties.length;
-        } else if (updatedParent.type === 'conditional' && 'conditionalFields' in updatedParent && updatedParent.conditionalFields) {
-          newIndex = updatedParent.conditionalFields.length;
-        }
-        setSelectedPath([...parentPath, newIndex.toString()]);
-      }
-    }
-  }, [properties, getPropertyByPath]);
+      // Selecionar o novo item
+      const newIndex = navigatorFactory.getChildrenCount(parentItem);
+      setSelectedPath([...parentPath, newIndex.toString()]);
+      
+      return updated as PropertyForm[];
+    });
+  }, [navigatorFactory]);
 
   // Função para remover propriedade
   const removeProperty = useCallback((path: string[]) => {
@@ -216,68 +156,35 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       const newProperties = properties.filter((_, index) => index !== parseInt(path[0]));
       setProperties(newProperties);
       setSelectedPath(null);
-    } else {
-      const newProperties = [...properties];
-      
-      const removeNested = (
-        items: (PropertyForm | ArrayItemProperty | ConditionalFieldForm)[],
-        pathIndex: number
-      ): (PropertyForm | ArrayItemProperty | ConditionalFieldForm)[] => {
-        return items.map((item, index) => {
-          if (index !== parseInt(path[pathIndex])) return item;
-          
-          if (pathIndex === path.length - 2) {
-            const newItem = { ...item };
-            const removeIndex = parseInt(path[path.length - 1]);
-            
-            if (item.type === 'array' && 'arrayItemProperties' in item && item.arrayItemProperties) {
-              return {
-                ...newItem,
-                arrayItemProperties: item.arrayItemProperties.filter((_, i) => i !== removeIndex)
-              };
-            } else if (item.type === 'object' && 'objectProperties' in item && item.objectProperties) {
-              return {
-                ...newItem,
-                objectProperties: item.objectProperties.filter((_, i) => i !== removeIndex)
-              };
-            } else if (item.type === 'conditional' && 'conditionalFields' in item && item.conditionalFields) {
-              return {
-                ...newItem,
-                conditionalFields: item.conditionalFields.filter((_, i) => i !== removeIndex)
-              };
-            }
-            
-            return newItem;
-          }
-          
-          const newItem = { ...item };
-          
-          if (item.type === 'array' && 'arrayItemProperties' in item && item.arrayItemProperties) {
-            return {
-              ...newItem,
-              arrayItemProperties: removeNested(item.arrayItemProperties, pathIndex + 1) as ArrayItemProperty[]
-            };
-          } else if (item.type === 'object' && 'objectProperties' in item && item.objectProperties) {
-            return {
-              ...newItem,
-              objectProperties: removeNested(item.objectProperties, pathIndex + 1) as ArrayItemProperty[]
-            };
-          } else if (item.type === 'conditional' && 'conditionalFields' in item && item.conditionalFields) {
-            return {
-              ...newItem,
-              conditionalFields: removeNested(item.conditionalFields, pathIndex + 1) as ConditionalFieldForm[]
-            };
-          }
-          
-          return newItem;
-        });
-      };
-      
-      const updated = removeNested(newProperties, 0);
-      setProperties(updated as PropertyForm[]);
-      setSelectedPath(null);
+      return;
     }
-  }, [properties]);
+
+    const newProperties = [...properties];
+    
+    const removeNested = (
+      items: PropertyItem[],
+      pathIndex: number
+    ): PropertyItem[] => {
+      return items.map((item, index) => {
+        if (index !== parseInt(path[pathIndex])) return item;
+        
+        if (pathIndex === path.length - 2) {
+          const removeIndex = parseInt(path[path.length - 1]);
+          return navigatorFactory.removeChild(item, removeIndex);
+        }
+        
+        const children = navigatorFactory.getChildren(item);
+        if (!children) return item;
+        
+        const updatedChildren = removeNested(children, pathIndex + 1);
+        return navigatorFactory.setChildren(item, updatedChildren);
+      });
+    };
+    
+    const updated = removeNested(newProperties, 0);
+    setProperties(updated as PropertyForm[]);
+    setSelectedPath(null);
+  }, [properties, navigatorFactory]);
 
   const value: PropertyContextType = {
     properties,

@@ -15,6 +15,7 @@ export const conditionalFieldFormSchema = z.object({
   enumNames: z.string().optional(),
   widget: widgetTypeSchema.optional(),
   format: z.string().optional(),
+  required: z.boolean().optional(),
 });
 
 export const arrayItemFormSchema = z.object({
@@ -57,7 +58,7 @@ export const propertyFormSchema = z.object({
   
   // Para conditional
   conditionalFields: z.array(conditionalFieldFormSchema).optional(),
-  addConditionalFields: z.boolean().default(false),
+  conditionalTriggerValue: z.string().optional(), // Valor do enum que ativa os campos condicionais
 });
 
 // TypeScript types para o formulário
@@ -85,9 +86,9 @@ export type {
 // ===== Tipos do Schema VTEX (JSON gerado) =====
 export type VtexProperty = {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array';
-  title: string;
+  title?: string;
   description?: string;
-  default?: string | number | boolean;
+  default?: string | number | boolean | unknown[];
   enum?: string[];
   enumNames?: string[];
   format?: string;
@@ -96,10 +97,16 @@ export type VtexProperty = {
   };
   items?: VtexProperty | {
     type: 'object';
+    title?: string;
     properties: Record<string, VtexProperty>;
     '__editorItemTitle'?: string;
   };
   properties?: Record<string, VtexProperty>;
+  dependencies?: Record<string, {
+    oneOf: Array<{
+      properties: Record<string, Partial<VtexProperty>>;
+    }>;
+  }>;
 };
 
 export type VtexSchemaDefinition = {
