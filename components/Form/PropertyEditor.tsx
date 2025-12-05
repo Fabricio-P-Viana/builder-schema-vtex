@@ -23,7 +23,7 @@ export default function PropertyEditor() {
   }
   
   const isRootLevel = selectedPath.length === 1;
-  const propertyTypes: PropertyType[] = ['string', 'boolean', 'object', 'array', 'number', 'enum', 'conditional'];
+  const propertyTypes: PropertyType[] = ['string', 'boolean', 'object', 'array', 'number', 'enum'];
   const widgetTypes: WidgetType[] = ['image-uploader', 'datetime', 'textarea', 'color-picker', 'range', 'radio'];
 
   const handleChange = (field: string, value: unknown) => {
